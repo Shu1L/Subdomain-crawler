@@ -13,22 +13,27 @@ import argparse
 import base64
 import json
 import subprocess
+from pyquery import PyQuery as pq
+from lxml import etree
+from selenium import webdriver
+
 
 url_list=[]
 
-def wirte_in_txt(yuming):
-    with open('subdomain.txt','a+') as file:
-            file.write(yuming+"\n")
+def wirte_in_txt(yuming,url):
+    with open('{}.txt'.format(yuming),'a+') as file:
+            file.write(url+"\n")
             file.close()
 
 def get_list(url,alist=url_list):
     alist.append(url)
     f_url=list(set(alist))
-    print(len(f_url))
+    for furl in f_url:
+        wirte_in_txt(yuming,furl)
 
 
 def spyse_spider(yuming,acc):
-    for i in range(20,20000,20):
+    for i in range(20,400,20):
         url='https://spyse.com/api/data/domain/subdomain?limit=20&offset={0}&domain={1}'.format(i,yuming)
         headers={
             "Host": "spyse.com",
@@ -45,6 +50,7 @@ def spyse_spider(yuming,acc):
             break
         time.sleep(2)
     print('spyse_spider爬取完成')
+
 
 def fofa_spider(yuming,apikey):
     keyword = 'domain:"{}"'.format(yuming)
@@ -84,7 +90,7 @@ def bing_spider(yuming):
             "Cookie": "MUID=21B2752917706F2505437BAB160F6E97; SRCHD=AF=NOFORM; SRCHUID=V=2&GUID=2CA7E322B43049AEB5793BD77AB10370&dmnchg=1; MUIDB=21B2752917706F2505437BAB160F6E97; _EDGE_S=mkt=zh-cn&SID=2A2D984CB1B766650E4196B7B0C867ED; _SS=SID=2A2D984CB1B766650E4196B7B0C867ED&bIm=743; ipv6=hit=1593656891562&t=4; SRCHUSR=DOB=20200504&T=1593653296000; SRCHHPGUSR=CW=1486&CH=743&DPR=1.25&UTC=480&HV=1593653342&WTS=63729250089&DM=0"
         }
         prarms = {
-            'q': 'site:lenovo.com',
+            'q': 'site:{}'.format(yuming),
             'first': first
         }
 
@@ -142,7 +148,10 @@ def DNS_A_record_search(yuming):
     soup = BeautifulSoup(r.text, 'lxml')
     url = soup.pre.string
     urls=re.findall('(.*?),',url,re.S)
-    for ul in urls:
+    strurl=" ".join(urls)
+    reurl=re.sub('\d+.\d+.\d+.\d+','',strurl)
+    lsurl=reurl.split('\n')
+    for ul in lsurl:
         get_list(ul)
     print('DNS查询完成')
 
@@ -160,21 +169,37 @@ def SSL_spider(yuming):
     html=r.text
     url=re.findall('<BR>(.*?)<BR>',html)
     for ul in url:
-        get_list(ul)
+        un = re.sub('\*.*', '', ul)
+        get_list(un)
     print('SSL查询完成')
 
-def nslookup_brute(yuming,number):
-        dics = open('subnames{}.txt'.format(number), 'rb')
-        try:
-            for dic in dics:
-                dic = dic.decode()
-                dic = dic.strip('\r\n')
-                cmd = "nslookup {0}.{1}".format(dic,yuming)
-                result = os.popen(cmd).read()
-                if result.count("Address") > 1:
-                        get_list(dic+'.'+yuming)
-        except:
-            pass
+def chaziyu_spider(yuming):
+    url='https://chaziyu.com/{}'.format(yuming)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:73.0) Gecko/20100101 Firefox/73.0",
+    }
+    res=requests.get(url=url,headers=headers)
+    html=res.text
+    doc=pq(html)
+    items=doc('td')
+    lis=items.find('a')
+    url=(lis.text())
+    urls=url.split(' ')
+    for ul in urls:
+        get_list(ul)
+    print('chaziyu爬取完毕')
+
+def threatcrowd_spider(yuming):
+    browser=webdriver.Chrome()
+    browser.get('https://www.threatcrowd.org/domain.php?domain={}'.format(yuming))
+    source=browser.page_source
+    browser.close()
+    html=etree.HTML(source)
+    results=html.xpath('//td/a[contains(@href,"domain.php")]/text()')
+    for result in results:
+        get_list(result)
+    print('threatcrowd爬取完毕')
+
 
 
 
@@ -195,6 +220,7 @@ if __name__ == '__main__':
     d_baidu_spider=threading.Thread(target=baidu_spider, args=(yuming,))
     threads.append(d_baidu_spider)
 
+
     d_spyse_spider=threading.Thread(target=spyse_spider, args=(yuming,acc))
     threads.append(d_spyse_spider)
 
@@ -204,9 +230,11 @@ if __name__ == '__main__':
     d_SSL_spider = threading.Thread(target=SSL_spider, args=(yuming,))
     threads.append(d_SSL_spider)
 
-    for x in range(4):
-        d_nslookup_brute=threading.Thread(target=nslookup_brute, args=(yuming,x))
-        threads.append(d_nslookup_brute)
+    d_threatcrowd_spider=threading.Thread(target=threatcrowd_spider,args=(yuming,))
+    threads.append(d_threatcrowd_spider)
+
+    d_chaziyu_spider=threading.Thread(target=chaziyu_spider,args=(yuming,))
+    threads.append(d_chaziyu_spider)
 
     for thr in threads:
         print(thr)
@@ -215,8 +243,8 @@ if __name__ == '__main__':
         if thr.isAlive():
             thr.join()
 
-    for url in url_list:
-        wirte_in_txt(url)
+    #for url in url_list:
+     #   wirte_in_txt(url)
 
 
 
